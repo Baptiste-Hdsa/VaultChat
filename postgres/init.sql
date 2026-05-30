@@ -13,7 +13,7 @@ create table if not exists vaultchat.messages (
     sender_id uuid references vaultchat.users(id) on delete cascade,
     receiver_id uuid references vaultchat.users(id) on delete cascade,
     content TEXT not null,
-    sended_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 create index if not exists idx_messages_participants on vaultchat.messages(sender_id, receiver_id);
