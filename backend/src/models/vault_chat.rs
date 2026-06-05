@@ -24,27 +24,12 @@ pub struct CreateMessage {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UpdateMessage {
+pub struct UpdateMessageIntern {
     pub id: Uuid,
     pub content: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, FromRow)]
-pub struct User {
-    pub id: Uuid,
-    pub pseudo: String,
-    pub password: String,
-}
-
 #[derive(Debug, Deserialize)]
-pub struct CreateUser {
-    pub pseudo: String,
-    pub password: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateUser {
-    pub id: Uuid,
-    pub pseudo: Option<String>,
-    pub password: Option<String>,
+pub struct UpdateMessageExtern {
+    pub content: Option<String>,
 }
