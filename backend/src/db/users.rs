@@ -1,0 +1,93 @@
+// src/db/users.rs
+// Database operations for users
+
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::error::{AppError, AppResult};
+use crate::models::user::{CreateUser, UpdateUserIntern, User};
+
+#[derive(Clone)]
+pub struct UserRepository {
+    pool: PgPool,
+}
+
+impl UserRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn get_all_users(&self) -> AppResult<Vec<User>> {
+        let users = sqlx::query_as::<_, User>(
+            r#"
+            SELECT id, pseudo, password
+            FROM users
+            ORDER BY pseudo ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(users)
+    }
+
+    pub async fn get_user_by_id(&self, id: Uuid) -> AppResult<User> {
+        sqlx::query_as::<_, User>(
+            r#"
+            SELECT id, pseudo, password
+            FROM users
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User with id {} not found", id)))
+    }
+
+    pub async fn create_user(&self, input: CreateUser) -> AppResult<User> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            INSERT INTO users (pseudo, password)
+            VALUES ($1, $2)
+            RETURNING id, pseudo, password
+            "#,
+        )
+        .bind(input.pseudo)
+        .bind(input.password)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    pub async fn update_user(&self, input: UpdateUserIntern) -> AppResult<User> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            UPDATE users
+            SET
+                pseudo = COALESCE($2, pseudo),
+                password = COALESCE($3, password)
+            WHERE id = $1
+            RETURNING id, pseudo, password
+            "#,
+        )
+        .bind(input.id)
+        .bind(input.pseudo)
+        .bind(input.password)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User with id {} not found", input.id)))?;
+
+        Ok(user)
+    }
+
+    pub async fn delete_user(&self, id: Uuid) -> AppResult<bool> {
+        let result = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+}
