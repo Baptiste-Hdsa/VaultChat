@@ -1,0 +1,64 @@
+// src/error.rs
+// Centralized error handling for the application
+
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde_json::json;
+use thiserror::Error;
+
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("Resource not found: {0}")]
+    NotFound(String),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
+
+    #[error("Internal server error")]
+    Internal(#[from] anyhow::Error),
+}
+
+// IntoResponse implementation allows AppError to be returned from handlers
+// Each error variant maps to an appropriate HTTP status code
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        // Determine the status code based on error type
+        let (status, message) = match &self {
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::Database(e) => {
+                // Log the actual error but return a generic message
+                tracing::error!("Database error: {:?}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "A database error occurred".to_string(),
+                )
+            }
+            AppError::Internal(e) => {
+                tracing::error!("Internal error: {:?}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal error occurred".to_string(),
+                )
+            }
+        };
+
+        // Return a JSON response with error details
+        let body = Json(json!({
+            "error": message,
+            "status": status.as_u16()
+        }));
+
+        (status, body).into_response()
+    }
+}
+
+// Type alias for cleaner handler return types
+pub type AppResult<T> = Result<T, AppError>;
