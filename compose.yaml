@@ -1,41 +1,53 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    restart: always
+    depends_on:
+      - database
+    networks:
+      - web_frontend
+
   database:
-    image: 'postgres:17'
+    image: "postgres:17"
     restart: always
     # Shared memory
-    shm_size: 1g 
-    
+    shm_size: 1g
+
     environment:
       POSTGRES_USER: ${DB_USER:-admin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-SuperSecretProdPassword}
       POSTGRES_DB: ${DB_NAME:-webapp_prod}
       POSTGRES_INITDB_ARGS: "--data-checksums" # Data Integrity
-      
+
     # Bind only to localhost
     ports:
-      - "127.0.0.1:5432:5432" 
-      
+      - "127.0.0.1:5432:5432"
+
     # Persistant storage
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-      
+
     deploy:
       resources:
         limits:
-          cpus: '4'
+          cpus: "4"
           memory: 4G
         reservations:
-          cpus: '1'
+          cpus: "1"
           memory: 1G
-          
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-      
+
     networks:
       - db_backend
 
@@ -44,4 +56,6 @@ volumes:
 
 networks:
   db_backend:
+    driver: bridge
+  web_frontend:
     driver: bridge
