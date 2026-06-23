@@ -2,6 +2,7 @@
 use icondata as i;
 use leptos::prelude::*;
 use leptos_icons::Icon;
+use leptos_router::components::A;
 
 #[component]
 pub fn Home() -> impl IntoView {
@@ -20,14 +21,14 @@ pub fn Home() -> impl IntoView {
                                 "A lightning-fast, self-hosted messaging platform built with Rust. No tracking, zero external CDN calls, just pure federated communication."
                             </p>
                             <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                                <a href="/register" class="btn btn-primary btn-lg gap-2">
+                                <A href="/register" attr:class="btn btn-primary btn-lg gap-2">
                                     <Icon icon=i::LuUserPlus/>
                                     "Create Account"
-                                </a>
-                                <a href="/login" class="btn btn-outline btn-lg gap-2">
+                                </A>
+                                <A href="/login" attr:class="btn btn-outline btn-lg gap-2">
                                     <Icon icon=i::LuLogIn/>
                                     "Login to Instance"
-                                </a>
+                                </A>
                             </div>
                         </div>
                     </div>

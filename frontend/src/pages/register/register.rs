@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_router::components::A;
 use leptos_use::signal_debounced;
 
 use crate::pages::register::helpers::*;
@@ -168,9 +169,9 @@ pub fn Register() -> impl IntoView {
 
                 <div class="divider">"OR"</div>
 
-                <a class="btn btn-soft btn-info w-full" href="/login">
+                <A attr:class="btn btn-soft btn-info w-full" href="/login">
                     "Login"
-                </a>
+                </A>
             </form>
         </div>
     }
