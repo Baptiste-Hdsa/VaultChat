@@ -19,8 +19,9 @@ pub fn Navbar() -> impl IntoView {
                     }
                 >
                     <div class="flex items-center gap-4">
-                        <span>"Welcome, " {move || current_user.get().unwrap().pseudo}</span>
-                        <button class="btn btn-error btn-sm">"Logout"</button>
+                        <span>{move || current_user.get().unwrap().pseudo}</span>
+                        <A href="/chat" attr:class="btn btn-success">"Go to chats"</A>
+                        <LogoutBtn/>
                     </div>
                 </Show>
                 <ThemeToggle />
