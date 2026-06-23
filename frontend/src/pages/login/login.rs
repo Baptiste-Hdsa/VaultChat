@@ -1,15 +1,24 @@
 use leptos::prelude::*;
+use leptos_router::{components::A, hooks::use_navigate};
 
-use crate::pages::login::helpers::login;
+use crate::{pages::login::helpers::login, store::auth::set_current_user};
 
 #[component]
 pub fn Login() -> impl IntoView {
+    let navigate = use_navigate();
     let (pseudo, set_pseudo) = signal(String::new());
     let (password, set_password) = signal(String::new());
 
     let login = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-        login(pseudo.get().as_str(), password.get().as_str());
+        let user = login(pseudo.get().as_str(), password.get().as_str());
+        match user {
+            Some(_) => {
+                set_current_user(user);
+                navigate("/chat", Default::default());
+            }
+            None => {}
+        }
     };
 
     let handle_pseudo_change = move |ev| {
@@ -52,9 +61,9 @@ pub fn Login() -> impl IntoView {
 
                 <div class="divider">"OR"</div>
 
-                <a class="btn btn-soft btn-info w-full" href="/register">
+                <A attr:class="btn btn-soft btn-info w-full" href="/register">
                     "Register"
-                </a>
+                </A>
             </form>
         </div>
     }
