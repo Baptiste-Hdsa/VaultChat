@@ -11,7 +11,7 @@ pub fn Navbar() -> impl IntoView {
     let current_user = get_current_user();
 
     view! {
-        <nav class="navbar bg-base-100 shadow-sm">
+        <nav class="navbar bg-base-100 shadow-sm shrink-0">
             <div class="flex-1">
                 <A attr:class="btn btn-ghost text-xl" href="/">"VaultChat"</A>
             </div>

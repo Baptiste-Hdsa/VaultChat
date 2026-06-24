@@ -628,6 +628,7 @@ dependencies = [
 name = "frontend"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "icondata",
  "leptos",
  "leptos-use",
@@ -636,6 +637,7 @@ dependencies = [
  "reqwest",
  "serde",
  "unicode-normalization",
+ "uuid",
  "zxcvbn",
 ]
 
