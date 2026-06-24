@@ -51,6 +51,21 @@ services:
     networks:
       - db_backend
 
+  backend:
+    build:
+      context: ./backend
+    restart: always
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgres://${DB_USER:-admin}:${DB_PASSWORD:-SuperSecretProdPassword}@database:5432/${DB_NAME:-webapp_prod}
+      - RUST_LOG=info,vaultchat=debug
+    networks:
+      - db_backend
+
 volumes:
   pg_data:
 

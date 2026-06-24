@@ -1,5 +1,6 @@
 // src/main.rs
 // Application entry point
+// https://oneuptime.com/blog/post/2026-01-26-rust-backend-development/view#setting-up-your-development-environment
 
 use axum::Router;
 use std::net::SocketAddr;
