@@ -1,1 +1,1 @@
-ALTER TABLE users ADD COLUMN public_key TEXT;
+ALTER TABLE vaultchat.users ADD COLUMN public_key TEXT;

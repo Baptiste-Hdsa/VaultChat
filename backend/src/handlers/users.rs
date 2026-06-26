@@ -8,7 +8,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::{db::users::UserRepository, models::user::{UpdateUserExtern, UpdateUserIntern}};
+use crate::models::user::{UpdateUserExtern, UpdateUserIntern};
 use crate::models::user::{User, CreateUser};
 use crate::error::{AppError, AppResult};
 use crate::state::VaultChatState;
@@ -16,7 +16,7 @@ use crate::state::VaultChatState;
 // GET /users - List users
 pub async fn list_users(
     State(state): State<VaultChatState>,
-    Path(id): Path<Uuid>
+    Path(_id): Path<Uuid>
 ) -> AppResult<Json<Vec<User>>> {
     let user = state.user_repo.get_all_users().await?;
     Ok(Json(user))

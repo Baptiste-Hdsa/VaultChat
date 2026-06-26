@@ -8,7 +8,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::{db::messages::MessageRepository, models::vault_chat::{UpdateMessageExtern, UpdateMessageIntern}};
+use crate::models::vault_chat::{UpdateMessageExtern, UpdateMessageIntern};
 use crate::models::vault_chat::{Message, CreateMessage};
 use crate::error::{AppError, AppResult};
 use crate::state::VaultChatState;
