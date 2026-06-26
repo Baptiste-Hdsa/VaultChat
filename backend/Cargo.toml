@@ -24,3 +24,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Error handling
 thiserror = "1.0"
 anyhow = "1.0"
+rsa = { version = "0.9.10", features = ["pem"] }
+rand = "0.8"
+pkcs8 = "0.11.0"
