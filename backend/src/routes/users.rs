@@ -3,7 +3,8 @@ use axum::{
     Router,
 };
 
-use crate::handlers::{users::{create_user, delete_user, get_user_by_id, list_users, update_user}, vault_chat::VaultChatState};
+use crate::handlers::users::{create_user, delete_user, get_user_by_id, list_users, update_user};
+use crate::state::VaultChatState;
 
 pub fn user_routes() -> Router<VaultChatState> {
     Router::new()

@@ -48,6 +48,7 @@ pub async fn create_user(
 }
 
 // PATCH /users/:id - Update an user
+#[axum::debug_handler]
 pub async fn update_user(
     State(state): State<VaultChatState>,
     Path(id): Path<Uuid>,
