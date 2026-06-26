@@ -1,5 +1,4 @@
-# Using the latest stable version of Rust
-FROM rust:1.78 as builder
+FROM rust:latest AS builder
 
 # Set the working directory
 WORKDIR /app
@@ -11,8 +10,8 @@ RUN apt-get update && apt-get install -y pkg-config openssl libssl-dev
 COPY Cargo.toml Cargo.lock ./
 
 # Create a dummy project to cache dependencies
-RUN mkdir src && 
-    echo "fn main() {}" > src/main.rs && 
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
     cargo build --release
 
 # Copy the actual source code

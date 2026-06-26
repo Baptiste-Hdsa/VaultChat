@@ -5,8 +5,9 @@ use axum::{
 
 use crate::handlers::vault_chat::{
     create_chat_message, delete_chat_message, get_message_by_id, list_chat_messages,
-    update_chat_message, VaultChatState,
+    update_chat_message,
 };
+use crate::state::VaultChatState;
 
 pub fn vault_chat_routes() -> Router<VaultChatState> {
     Router::new()

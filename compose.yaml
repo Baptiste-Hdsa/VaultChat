@@ -7,9 +7,9 @@ services:
       - "80:80"
     restart: always
     depends_on:
-      - database
+      - backend
     networks:
-      - web_frontend
+      - app_network
 
   database:
     image: "postgres:17"
@@ -49,7 +49,7 @@ services:
       start_period: 15s
 
     networks:
-      - db_backend
+      - app_network
 
   backend:
     build:
@@ -64,13 +64,11 @@ services:
       - DATABASE_URL=postgres://${DB_USER:-admin}:${DB_PASSWORD:-SuperSecretProdPassword}@database:5432/${DB_NAME:-webapp_prod}
       - RUST_LOG=info,vaultchat=debug
     networks:
-      - db_backend
+      - app_network
 
 volumes:
   pg_data:
 
 networks:
-  db_backend:
-    driver: bridge
-  web_frontend:
+  app_network:
     driver: bridge

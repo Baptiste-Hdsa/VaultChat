@@ -1,7 +1,6 @@
 // src/models/chat.rs
 // This module defines the Message and User struct with related types
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -25,7 +24,7 @@ pub struct UpdateUserIntern {
     pub pseudo: Option<String>,
     pub password: Option<String>,
 }
-
+#[derive(Debug, Deserialize)]
 pub struct UpdateUserExtern  {
     pub pseudo: Option<String>,
     pub password: Option<String>,
