@@ -8,7 +8,8 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::models::vault_chat::{CreateMessage, Message, UpdateMessageExtern, UpdateMessageIntern};
+use crate::models::vault_chat::{UpdateMessageExtern, UpdateMessageIntern};
+use crate::models::vault_chat::{Message, CreateMessage};
 use crate::error::{AppError, AppResult};
 use crate::state::VaultChatState;
 
@@ -57,16 +58,15 @@ pub async fn update_chat_message(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateMessageExtern>,
 ) -> AppResult<Json<Message>> {
-    if let Some(content) = &input.content {
-        if content.trim().is_empty() {
+    let new_message = UpdateMessageIntern {
+        id,
+        content: input.content.clone(),
+    };
+    if let Some(ref message) = input.content {
+        if message.trim().is_empty() {
             return Err(AppError::Validation("Message cannot be empty".to_string()));
         }
     }
-
-    let new_message = UpdateMessageIntern {
-        id,
-        content: input.content,
-    };
 
     let message = state.message_repo.update_message(new_message).await?;
     Ok(Json(message))

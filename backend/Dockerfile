@@ -19,10 +19,10 @@ COPY src ./src
 COPY migrations ./migrations
 
 # Build the application
-RUN cargo build --release
+RUN touch src/main.rs && cargo build --release
 
 # Second stage: create a smaller image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Install OpenSSL, which is a runtime dependency
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*

@@ -8,16 +8,18 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::models::user::{CreateUser, UpdateUserExtern, UpdateUserIntern, User};
+use crate::models::user::{UpdateUserExtern, UpdateUserIntern};
+use crate::models::user::{User, CreateUser};
 use crate::error::{AppError, AppResult};
 use crate::state::VaultChatState;
 
 // GET /users - List users
 pub async fn list_users(
     State(state): State<VaultChatState>,
+    Path(_id): Path<Uuid>
 ) -> AppResult<Json<Vec<User>>> {
-    let users = state.user_repo.get_all_users().await?;
-    Ok(Json(users))
+    let user = state.user_repo.get_all_users().await?;
+    Ok(Json(user))
 }
 
 // GET /user/:id - Get an user by id
@@ -33,22 +35,21 @@ pub async fn get_user_by_id(
 pub async fn create_user(
     State(state): State<VaultChatState>,
     Json(input): Json<CreateUser>,
-) -> AppResult<(StatusCode, Json<User>)> {
-    if input.pseudo.trim().is_empty() {
-        return Err(AppError::Validation("pseudo cannot be empty".to_string()));
+) -> AppResult<(StatusCode, Json<crate::models::user::CreateUserResponse>)> {
+    if input.username.trim().is_empty() {
+        return Err(AppError::Validation("username cannot be empty".to_string()));
     }
 
     if input.password.trim().is_empty() {
         return Err(AppError::Validation("Password cannot be empty".to_string()));
     }
 
-    let user = state.user_repo.create_user(input).await?;
+    let response = state.user_repo.create_user(input).await?;
 
-    Ok((StatusCode::CREATED, Json(user)))
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 // PATCH /users/:id - Update an user
-#[axum::debug_handler]
 pub async fn update_user(
     State(state): State<VaultChatState>,
     Path(id): Path<Uuid>,
@@ -56,12 +57,11 @@ pub async fn update_user(
 ) -> AppResult<Json<User>> {
     let new_user = UpdateUserIntern {
         id,
-        pseudo: input.pseudo,
+        username: input.username,
         password: input.password,
     };
 
     let user = state.user_repo.update_user(new_user).await?;
-
     Ok(Json(user))
 }
 

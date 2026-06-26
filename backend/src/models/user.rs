@@ -8,25 +8,33 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, FromRow)]
 pub struct User {
     pub id: Uuid,
-    pub pseudo: String,
+    #[sqlx(rename = "pseudo")]
+    pub username: String,
     pub password: String,
+    pub public_key: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateUserResponse {
+    pub user: User,
+    pub private_key: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateUser {
-    pub pseudo: String,
+    pub username: String,
     pub password: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateUserIntern {
     pub id: Uuid,
-    pub pseudo: Option<String>,
-    pub password: Option<String>,
-}
-#[derive(Debug, Deserialize)]
-pub struct UpdateUserExtern  {
-    pub pseudo: Option<String>,
+    pub username: Option<String>,
     pub password: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateUserExtern  {
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
