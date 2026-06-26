@@ -1,5 +1,4 @@
-# Using the latest stable version of Rust
-FROM rust:1.78 AS builder
+FROM rust:latest AS builder
 
 # Set the working directory
 WORKDIR /app

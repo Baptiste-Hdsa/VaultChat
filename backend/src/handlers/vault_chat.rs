@@ -8,9 +8,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::{db::messages::MessageRepository, models::vault_chat::{UpdateMessageExtern, UpdateMessageIntern}};
-use crate::db::users::UserRepository;
-use crate::models::vault_chat::{Message, CreateMessage, UpdateMessage};
+use crate::models::vault_chat::{CreateMessage, Message, UpdateMessageExtern, UpdateMessageIntern};
 use crate::error::{AppError, AppResult};
 use crate::state::VaultChatState;
 
@@ -38,8 +36,10 @@ pub async fn create_chat_message(
     State(state): State<VaultChatState>,
     Json(input): Json<CreateMessage>,
 ) -> AppResult<(StatusCode, Json<Message>)> {
-    if input.content.trim().is_empty() {
-        return Err(AppError::Validation("Message cannot be empty".to_string()));
+    if let Some(content) = &input.content {
+        if content.trim().is_empty() {
+            return Err(AppError::Validation("Message cannot be empty".to_string()));
+        }
     }
 
     if input.sender_id == input.receiver_id {
@@ -57,13 +57,16 @@ pub async fn update_chat_message(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateMessageExtern>,
 ) -> AppResult<Json<Message>> {
-    let json(new_message): Json<UpdateMessageIntern>;
-    new_message.id = id;
-    if let Some(ref message) = input.content {
-        if message.trim().is_empty() {
+    if let Some(content) = &input.content {
+        if content.trim().is_empty() {
             return Err(AppError::Validation("Message cannot be empty".to_string()));
         }
     }
+
+    let new_message = UpdateMessageIntern {
+        id,
+        content: input.content,
+    };
 
     let message = state.message_repo.update_message(new_message).await?;
     Ok(Json(message))

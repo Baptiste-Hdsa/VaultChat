@@ -8,18 +8,16 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::{db::users::UserRepository, models::user::{UpdateUserExtern, UpdateUserIntern}};
-use crate::models::user::{User, CreateUser, UpdateUser};
+use crate::models::user::{CreateUser, UpdateUserExtern, UpdateUserIntern, User};
 use crate::error::{AppError, AppResult};
 use crate::state::VaultChatState;
 
 // GET /users - List users
 pub async fn list_users(
     State(state): State<VaultChatState>,
-    Path(id): Path<Uuid>
 ) -> AppResult<Json<Vec<User>>> {
-    let user = state.user_repo.get_all_users().await?;
-    Ok(Json(user))
+    let users = state.user_repo.get_all_users().await?;
+    Ok(Json(users))
 }
 
 // GET /user/:id - Get an user by id
@@ -41,12 +39,12 @@ pub async fn create_user(
     }
 
     if input.password.trim().is_empty() {
-        return Err(AppError::Validation("Password cannot be send to the sender".to_string()));
+        return Err(AppError::Validation("Password cannot be empty".to_string()));
     }
 
-    let user = state.user_repo.create_message(input).await?;
+    let user = state.user_repo.create_user(input).await?;
 
-    Ok((StatusCode::CREATED, Json(message)))
+    Ok((StatusCode::CREATED, Json(user)))
 }
 
 // PATCH /users/:id - Update an user
@@ -55,21 +53,14 @@ pub async fn update_user(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateUserExtern>,
 ) -> AppResult<Json<User>> {
-    let json(new_user): Json<UpdateUserIntern>;
-    new_user.id = id;
+    let new_user = UpdateUserIntern {
+        id,
+        pseudo: input.pseudo,
+        password: input.password,
+    };
 
-    match input.pseudo {
-        Some(pseudo) => {
-            let user = state.user_repo.update_user(new_user).await?;
-        },
-        None() => (),
-    }
-    match input.password {
-        Some(password) => {
-            let user = state.user_repo.update_user(new_user).await?;
-        },
-        None() => (),
-    }
+    let user = state.user_repo.update_user(new_user).await?;
+
     Ok(Json(user))
 }
 
