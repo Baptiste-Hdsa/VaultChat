@@ -12,6 +12,7 @@ mod handlers;
 mod helpers;
 mod models;
 mod routes;
+mod security;
 
 pub mod state;
 

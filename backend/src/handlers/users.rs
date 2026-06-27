@@ -1,14 +1,21 @@
 // src/handlers/users.rs
 // HTTP request handlers for users operations
 
+use std::str::FromStr;
+
+use anyhow::anyhow;
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
+use axum_extra::extract::{
+    CookieJar,
+    cookie::{Cookie, SameSite},
+};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use uuid::Uuid;
 
-use crate::state::VaultChatState;
 use crate::{
     error::{AppError, AppResult},
     models::user::SafeUser,
@@ -18,6 +25,10 @@ use crate::{
     models::user::{UpdateUserExtern, UpdateUserIntern},
 };
 use crate::{helpers::password::verify_password, models::user::CreateUser};
+use crate::{
+    security::auth::{Claims, JWT_SECRET, create_jwt},
+    state::VaultChatState,
+};
 
 // GET /users - List users
 pub async fn list_users(State(state): State<VaultChatState>) -> AppResult<Json<Vec<SafeUser>>> {
@@ -97,12 +108,48 @@ pub async fn delete_user(
 
 pub async fn login_user(
     State(state): State<VaultChatState>,
+    jar: CookieJar,
     Json(input): Json<CreateUser>,
-) -> AppResult<Json<SafeUser>> {
+) -> AppResult<(CookieJar, Json<SafeUser>)> {
     let user = state.user_repo.get_user_by_username(input.username).await?;
 
-    if verify_password(&user.password, &input.password) {
-        return Ok(Json(user.to_safe()));
+    if !verify_password(&user.password, &input.password) {
+        return Err(AppError::NotFound(
+            "Pseudo or password incorrect".to_string(),
+        ));
     }
-    Err(AppError::NotFound(format!("Pseudo or password incorrect")))
+
+    let token = create_jwt(&user.id.to_string())
+        .map_err(|e| AppError::Internal(anyhow!("JWT Error: {}", e)))?;
+
+    let cookie = Cookie::build(("vaultchat_session", token))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .build();
+
+    Ok((jar.add(cookie), Json(user.to_safe())))
+}
+
+pub async fn get_current_user(
+    State(state): State<VaultChatState>,
+    jar: CookieJar,
+) -> AppResult<Json<SafeUser>> {
+    let cookie = jar
+        .get("vaultchat_session")
+        .ok_or_else(|| AppError::NotFound("No session cookie found".to_string()))?;
+
+    let token_data = decode::<Claims>(
+        cookie.value(),
+        &DecodingKey::from_secret(JWT_SECRET),
+        &Validation::default(),
+    )
+    .map_err(|e| AppError::Internal(anyhow!("Invalid token: {}", e)))?;
+
+    let user = state
+        .user_repo
+        .get_user_by_id(Uuid::from_str(token_data.claims.sub.as_str()).unwrap())
+        .await?;
+
+    Ok(Json(user.to_safe()))
 }

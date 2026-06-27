@@ -9,11 +9,8 @@ use rsa::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::error::{AppError, AppResult};
 use crate::models::user::{CreateUser, CreateUserResponse, UpdateUserIntern, User};
-use crate::{
-    error::{AppError, AppResult},
-    helpers::password::hash_password,
-};
 
 #[derive(Clone)]
 pub struct UserRepository {
