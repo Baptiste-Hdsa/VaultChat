@@ -1,7 +1,10 @@
 use leptos::{logging::log, prelude::*};
+use serde::Serialize;
 use zxcvbn::{Score, zxcvbn};
 
 use unicode_normalization::UnicodeNormalization;
+
+use crate::services::web::base_url;
 
 const ILLEGAL_TEXTS: &[&str] = &["vaultchat"];
 
@@ -88,12 +91,36 @@ fn check_password_strength(pseudo: &str, password: &str) -> Vec<String> {
     return errors;
 }
 
-pub fn register(pseudo: &str, password: &str) {
-    log!(
-        "Calling backend to register pseudo: {} and password {}",
-        pseudo,
-        password
-    );
+#[derive(Serialize)]
+struct RegisterPayload {
+    username: String,
+    password: String,
+}
+
+pub async fn register(pseudo: &str, password: &str) -> Result<bool, String> {
+    log!("preping payload");
+    let payload = RegisterPayload {
+        username: pseudo.to_string(),
+        password: password.to_string(),
+    };
+
+    log!("sending request");
+    let client = reqwest::Client::new();
+    match client
+        .post(base_url() + "/api/users")
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(response) => {
+            if response.status().is_success() {
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        Err(err) => Err(format!("An error happened: {:?}", err).to_string()),
+    }
 }
 
 pub fn check_credentials(
@@ -132,9 +159,4 @@ pub fn update_errors(
             set_confirm_password_errors.set(errors.are_passwords_different());
         }
     }
-}
-
-pub fn is_pseudo_taken(pseudo: String) -> bool {
-    log!("TODO make backend call to check availability");
-    return false;
 }

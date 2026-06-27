@@ -23,7 +23,7 @@ pub fn Navbar() -> impl IntoView {
                     }
                 >
                     <div class="flex items-center gap-4">
-                        <span>{move || current_user.get().unwrap().pseudo}</span>
+                        <span>{move || current_user.get().unwrap().username}</span>
                         <A href="/chat" attr:class="btn btn-success">"Go to chats"</A>
                         <LogoutBtn/>
                     </div>
