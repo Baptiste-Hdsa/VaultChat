@@ -1,2 +1,3 @@
+mod logout;
 pub mod nav;
-pub mod theme;
+mod theme;

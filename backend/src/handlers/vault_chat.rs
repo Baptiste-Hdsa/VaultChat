@@ -2,24 +2,29 @@
 // HTTP request handlers for message operations
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use uuid::Uuid;
 
-use crate::models::vault_chat::{UpdateMessageExtern, UpdateMessageIntern};
-use crate::models::vault_chat::{Message, CreateMessage};
 use crate::error::{AppError, AppResult};
+use crate::models::vault_chat::{UpdateMessageExtern, UpdateMessageIntern};
+use crate::models::{
+    user::Contact,
+    vault_chat::{CreateMessage, Message},
+};
 use crate::state::VaultChatState;
-
 
 // GET /chats/:sender_id/:receiver_id/messages - List chat messages
 pub async fn list_chat_messages(
     State(state): State<VaultChatState>,
-    Path((sender_id, receiver_id)): Path<(Uuid, Uuid)>
+    Path((sender_id, receiver_id)): Path<(Uuid, Uuid)>,
 ) -> AppResult<Json<Vec<Message>>> {
-    let messages = state.message_repo.list_chat_messages(sender_id, receiver_id).await?;
+    let messages = state
+        .message_repo
+        .list_chat_messages(sender_id, receiver_id)
+        .await?;
     Ok(Json(messages))
 }
 
@@ -43,11 +48,22 @@ pub async fn create_chat_message(
         }
     }
 
-    if input.sender_id == input.receiver_id {
-        return Err(AppError::Validation("Message cannot be send to the sender".to_string()));
-    }
-
-    let message = state.message_repo.create_message(input).await?;
+    let message = if input.receiver_id.is_some() {
+        state.message_repo.create_message(input).await?
+    } else if input.receiver_pseudo.is_some() {
+        let receiver = state
+            .user_repo
+            .get_user_by_username(input.receiver_pseudo.clone().unwrap())
+            .await?;
+        state
+            .message_repo
+            .create_first_message(input, receiver.id)
+            .await?
+    } else {
+        return Err(AppError::Validation(
+            "Message cannot be send to no one".to_string(),
+        ));
+    };
 
     Ok((StatusCode::CREATED, Json(message)))
 }
@@ -82,6 +98,39 @@ pub async fn delete_chat_message(
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(AppError::NotFound(format!("Message with id {} not found", id)))
+        Err(AppError::NotFound(format!(
+            "Message with id {} not found",
+            id
+        )))
     }
+}
+
+pub async fn get_user_contacts(
+    State(state): State<VaultChatState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Vec<Contact>>> {
+    let mut contacts = vec![];
+
+    let self_last_message = match state.message_repo.get_last_message(id, id).await {
+        Ok(last_message) => Some(last_message),
+        Err(_) => None,
+    };
+    contacts.push(
+        state
+            .user_repo
+            .get_user_by_id(id)
+            .await?
+            .to_safe()
+            .to_contact(self_last_message),
+    );
+
+    let users = state.message_repo.get_user_contacts(id).await?;
+    for user in users {
+        let last_message = match state.message_repo.get_last_message(id, user.id).await {
+            Ok(last_message) => Some(last_message),
+            Err(_) => None,
+        };
+        contacts.push(user.to_contact(last_message));
+    }
+    Ok(Json(contacts))
 }

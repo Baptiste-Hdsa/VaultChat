@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
+use crate::models::user::SafeUser;
 use crate::models::vault_chat::{CreateMessage, Message, UpdateMessageIntern};
 
 #[derive(Clone)]
@@ -26,7 +27,7 @@ impl MessageRepository {
         let chat_messages = sqlx::query_as::<_, Message>(
             r#"
             SELECT id, sender_id, receiver_id, content, sent_at
-            FROM messages
+            FROM vaultchat.messages
             WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
             ORDER BY sent_at ASC
             "#,
@@ -43,7 +44,7 @@ impl MessageRepository {
         sqlx::query_as::<_, Message>(
             r#"
             SELECT id, sender_id, receiver_id, content, sent_at
-            FROM messages
+            FROM vaultchat.messages
             WHERE id = $1
             "#,
         )
@@ -58,13 +59,37 @@ impl MessageRepository {
 
         let message = sqlx::query_as::<_, Message>(
             r#"
-            INSERT INTO messages (sender_id, receiver_id, content, sent_at)
+            INSERT INTO vaultchat.messages (sender_id, receiver_id, content, sent_at)
             VALUES ($1, $2, $3, $4)
             RETURNING id, sender_id, receiver_id, content, sent_at
             "#,
         )
         .bind(&input.sender_id)
-        .bind(&input.receiver_id)
+        .bind(&input.receiver_id.unwrap())
+        .bind(&input.content)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(message)
+    }
+
+    pub async fn create_first_message(
+        &self,
+        input: CreateMessage,
+        receiver_id: Uuid,
+    ) -> AppResult<Message> {
+        let now = Utc::now();
+
+        let message = sqlx::query_as::<_, Message>(
+            r#"
+            INSERT INTO vaultchat.messages (sender_id, receiver_id, content, sent_at)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, sender_id, receiver_id, content, sent_at
+            "#,
+        )
+        .bind(&input.sender_id)
+        .bind(receiver_id)
         .bind(&input.content)
         .bind(now)
         .fetch_one(&self.pool)
@@ -76,7 +101,7 @@ impl MessageRepository {
     pub async fn update_message(&self, input: UpdateMessageIntern) -> AppResult<Message> {
         let message = sqlx::query_as::<_, Message>(
             r#"
-            UPDATE messages
+            UPDATE vaultchat.messages
             SET
                 content = COALESCE($2, content)
             WHERE id = $1
@@ -93,11 +118,45 @@ impl MessageRepository {
     }
 
     pub async fn delete_message(&self, id: Uuid) -> AppResult<bool> {
-        let result = sqlx::query("DELETE FROM messages WHERE id = $1")
+        let result = sqlx::query("DELETE FROM vaultchat.messages WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
             .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn get_user_contacts(&self, id: Uuid) -> AppResult<Vec<SafeUser>> {
+        let contacts = sqlx::query_as::<_, SafeUser>(
+            r#"
+                SELECT u.id, u.pseudo, u.public_key
+                FROM vaultchat.users u
+                INNER JOIN vaultchat.messages m ON m.sender_id = u.id or m.receiver_id = u.id
+                WHERE (m.sender_id = $1 OR  m.receiver_id = $1) AND u.id != $1
+            "#,
+        )
+        .bind(id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(contacts)
+    }
+
+    pub async fn get_last_message(&self, user_1: Uuid, user_2: Uuid) -> AppResult<Message> {
+        let chat_messages = sqlx::query_as::<_, Message>(
+            r#"
+            SELECT id, sender_id, receiver_id, content, sent_at
+            FROM vaultchat.messages
+            WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
+            ORDER BY sent_at DESC
+            LIMIT 1 OFFSET 0
+            "#,
+        )
+        .bind(user_1)
+        .bind(user_2)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(chat_messages)
     }
 }
