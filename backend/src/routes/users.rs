@@ -4,7 +4,7 @@ use axum::{
 };
 
 use crate::handlers::users::{
-    create_user, delete_user, get_user_by_id, list_users, login_user, update_user,
+    create_user, delete_user, get_current_user, get_user_by_id, list_users, login_user, update_user,
 };
 use crate::state::VaultChatState;
 
@@ -16,4 +16,5 @@ pub fn user_routes() -> Router<VaultChatState> {
         .route("/users/:id", patch(update_user))
         .route("/users/:id", delete(delete_user))
         .route("/login", post(login_user))
+        .route("/users/me", get(get_current_user))
 }

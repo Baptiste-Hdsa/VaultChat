@@ -1,6 +1,21 @@
-use crate::data_models::user::User;
+use crate::{data_models::user::User, services::web::base_url};
 use leptos::{prelude::*, server::codee::string::JsonSerdeCodec};
 use leptos_use::storage::use_local_storage;
+
+pub async fn fetch_current_user() -> Option<User> {
+    let client = reqwest::Client::new();
+
+    match client.get(base_url() + "/api/users/me").send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                response.json::<User>().await.ok()
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
 
 pub fn provide_auth_state() {
     let (current_user, set_current_user, _) =

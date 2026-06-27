@@ -5,10 +5,13 @@ use crate::components::navbar::nav::Navbar;
 use crate::pages::chat::chat::Chat;
 use crate::pages::home::home::Home;
 use crate::pages::{login::login::Login, register::register::Register};
-use crate::store::auth::{get_current_user, provide_auth_state};
+use crate::store::auth::{
+    fetch_current_user, get_current_user, provide_auth_state, set_current_user,
+};
 
 #[component]
 pub fn App() -> impl IntoView {
+    let auth_check = LocalResource::new(|| async move { fetch_current_user().await });
     provide_auth_state();
 
     view! {
@@ -17,31 +20,44 @@ pub fn App() -> impl IntoView {
                 <Navbar />
 
                 <main class="flex-1 min-h-0 overflow-hidden relative">
-                    // The Router looks at the URL and renders only the matching Route
-                    <Routes fallback=|| view! { <h1>"404 Not Found"</h1> }>
-                        <Route
-                            path=path!("/")
-                            view=Home
-                        />
-                        <ProtectedRoute
-                            path=path!("/login")
-                            redirect_path=|| "/chat"
-                            condition=move || Some(!get_current_user().get().is_some())
-                            view=Login
-                        />
-                        <ProtectedRoute
-                            path=path!("/register")
-                            redirect_path=|| "/chat"
-                            condition=move || Some(!get_current_user().get().is_some())
-                            view=Register
-                        />
-                        <ProtectedRoute
-                            path=path!("/chat")
-                            redirect_path=|| "/login"
-                            condition=move || Some(get_current_user().get().is_some())
-                            view=Chat
-                        />
-                    </Routes>
+                    <Suspense fallback=|| view! {
+                        <div class="loading">"Verifying session..."</div> }>
+                            {move || {
+                                // Once the resource finishes loading, update our global signal
+                                if let Some(user) = auth_check.get().flatten() {
+                                    set_current_user(Some(user));
+                                }
+
+                                // Now render the actual routing logic!
+                                view! {
+                                    // The Router looks at the URL and renders only the matching Route
+                                    <Routes fallback=|| view! { <h1>"404 Not Found"</h1> }>
+                                        <Route
+                                            path=path!("/")
+                                            view=Home
+                                        />
+                                        <ProtectedRoute
+                                            path=path!("/login")
+                                            redirect_path=|| "/chat"
+                                            condition=move || Some(!get_current_user().get().is_some())
+                                            view=Login
+                                        />
+                                        <ProtectedRoute
+                                            path=path!("/register")
+                                            redirect_path=|| "/chat"
+                                            condition=move || Some(!get_current_user().get().is_some())
+                                            view=Register
+                                        />
+                                        <ProtectedRoute
+                                            path=path!("/chat")
+                                            redirect_path=|| "/login"
+                                            condition=move || Some(get_current_user().get().is_some())
+                                            view=Chat
+                                        />
+                                    </Routes>
+                                }
+                            }}
+                    </Suspense>
                 </main>
             </div>
         </Router>
