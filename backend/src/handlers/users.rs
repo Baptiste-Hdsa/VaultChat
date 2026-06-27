@@ -8,13 +8,16 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::models::user::CreateUser;
-use crate::models::user::{UpdateUserExtern, UpdateUserIntern};
 use crate::state::VaultChatState;
 use crate::{
     error::{AppError, AppResult},
     models::user::SafeUser,
 };
+use crate::{
+    helpers::password::hash_password,
+    models::user::{UpdateUserExtern, UpdateUserIntern},
+};
+use crate::{helpers::password::verify_password, models::user::CreateUser};
 
 // GET /users - List users
 pub async fn list_users(State(state): State<VaultChatState>) -> AppResult<Json<Vec<SafeUser>>> {
@@ -48,7 +51,16 @@ pub async fn create_user(
         return Err(AppError::Validation("Password cannot be empty".to_string()));
     }
 
-    let response = state.user_repo.create_user(input).await?;
+    let hash = match hash_password(input.password.as_str()) {
+        Ok(hash) => hash,
+        Err(err) => {
+            return Err(AppError::Validation(
+                format!("Error while hashing password: {:?}", err).to_string(),
+            ));
+        }
+    };
+
+    let response = state.user_repo.create_user(input, hash.as_str()).await?;
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -89,7 +101,7 @@ pub async fn login_user(
 ) -> AppResult<Json<SafeUser>> {
     let user = state.user_repo.get_user_by_username(input.username).await?;
 
-    if user.password.eq(&input.password) {
+    if verify_password(&user.password, &input.password) {
         return Ok(Json(user.to_safe()));
     }
     Err(AppError::NotFound(format!("Pseudo or password incorrect")))
