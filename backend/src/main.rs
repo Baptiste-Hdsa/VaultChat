@@ -9,17 +9,18 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod db;
 mod error;
 mod handlers;
+mod helpers;
 mod models;
 mod routes;
 
 pub mod state;
 
-use db::pool::create_pool;
 use db::messages::MessageRepository;
+use db::pool::create_pool;
 use db::users::UserRepository;
-use state::VaultChatState;
-use routes::vault_chat::vault_chat_routes;
 use routes::users::user_routes;
+use routes::vault_chat::vault_chat_routes;
+use state::VaultChatState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,8 +37,7 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
     // Get database URL from environment
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     // Create database connection pool
     tracing::info!("Connecting to database...");

@@ -9,8 +9,11 @@ use rsa::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::error::{AppError, AppResult};
 use crate::models::user::{CreateUser, CreateUserResponse, UpdateUserIntern, User};
+use crate::{
+    error::{AppError, AppResult},
+    helpers::password::hash_password,
+};
 
 #[derive(Clone)]
 pub struct UserRepository {
@@ -50,7 +53,11 @@ impl UserRepository {
         .ok_or_else(|| AppError::NotFound(format!("User with id {} not found", id)))
     }
 
-    pub async fn create_user(&self, input: CreateUser) -> AppResult<CreateUserResponse> {
+    pub async fn create_user(
+        &self,
+        input: CreateUser,
+        hash: &str,
+    ) -> AppResult<CreateUserResponse> {
         // Generate a 2048-bit RSA key pair
         let mut rng = OsRng;
         let priv_key = RsaPrivateKey::new(&mut rng, 2048).map_err(|e| {
@@ -79,7 +86,7 @@ impl UserRepository {
             "#,
         )
         .bind(input.username)
-        .bind(input.password)
+        .bind(hash)
         .bind(&pub_key_pem)
         .fetch_one(&self.pool)
         .await?;
