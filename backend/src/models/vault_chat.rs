@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Message {
     pub id: Uuid,
@@ -19,7 +18,8 @@ pub struct Message {
 #[derive(Debug, Deserialize)]
 pub struct CreateMessage {
     pub sender_id: Uuid,
-    pub receiver_id: Uuid,
+    pub receiver_id: Option<Uuid>,
+    pub receiver_pseudo: Option<String>,
     pub content: Option<String>,
 }
 
