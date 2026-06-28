@@ -14,6 +14,9 @@ pub struct User {
     pub username: String,
     pub password: String,
     pub public_key: String,
+    pub wrapped_private_key: String,
+    pub crypto_salt: String,
+    pub aes_iv: String,
 }
 
 impl User {
@@ -24,6 +27,17 @@ impl User {
             public_key: self.public_key.clone(),
         }
     }
+
+    pub fn to_login(&self) -> LoginUserOutput {
+        LoginUserOutput {
+            id: self.id,
+            username: self.username.clone(),
+            public_key: self.public_key.clone(),
+            wrapped_private_key: self.wrapped_private_key.clone(),
+            crypto_salt: self.crypto_salt.clone(),
+            aes_iv: self.aes_iv.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -32,6 +46,17 @@ pub struct SafeUser {
     #[sqlx(rename = "pseudo")]
     pub username: String,
     pub public_key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct LoginUserOutput {
+    pub id: Uuid,
+    #[sqlx(rename = "pseudo")]
+    pub username: String,
+    pub public_key: String,
+    pub wrapped_private_key: String,
+    pub crypto_salt: String,
+    pub aes_iv: String,
 }
 
 impl SafeUser {
@@ -48,13 +73,16 @@ impl SafeUser {
 #[derive(Debug, Serialize)]
 pub struct CreateUserResponse {
     pub user: SafeUser,
-    pub private_key: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateUser {
     pub username: String,
     pub password: String,
+    pub public_key: String,
+    pub wrapped_private_key: String,
+    pub crypto_salt: String,
+    pub aes_iv: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,4 +104,10 @@ pub struct Contact {
     pub username: String,
     pub public_key: String,
     pub last_message: Option<Message>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginUserInput {
+    pub username: String,
+    pub password: String,
 }

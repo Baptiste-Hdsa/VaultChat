@@ -1,11 +1,15 @@
 use chrono::Local;
+use gloo_timers::future;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     data_models::{contact::Contact, message::Message},
-    services::web::base_url,
+    services::{
+        keys::{decrypt_message, encrypt_message, get_key_securely},
+        web::base_url,
+    },
     store::auth::get_current_user,
 };
 
@@ -15,7 +19,7 @@ fn order_messages_by_timestamp(messages: &mut Vec<Message>) {
 
 async fn get_messages_with_contact(user_id: String, contact_id: String) -> Vec<Message> {
     let client = reqwest::Client::new();
-    let mut messages = match client
+    let messages = match client
         .get(
             base_url() + "/api/chats/" + user_id.as_str() + "/" + contact_id.as_str() + "/messages",
         )
@@ -36,8 +40,32 @@ async fn get_messages_with_contact(user_id: String, contact_id: String) -> Vec<M
         None => vec![],
     };
 
-    order_messages_by_timestamp(&mut messages);
-    messages
+    let my_priv_key = get_key_securely().await.unwrap();
+
+    // 3. Transform the messages
+    let mut decrypted_list = Vec::new();
+    for msg in messages {
+        let decrypted_content = if msg.sender_id == user_id {
+            // It's YOUR message. (If you didn't double-encrypt, you can't decrypt it)
+            msg.content
+        } else {
+            // It's RECEIVED. Decrypt it!
+            decrypt_message(&my_priv_key, &msg.content)
+                .await
+                .unwrap_or_else(|_| "Error decrypting".to_string())
+        };
+
+        decrypted_list.push(Message {
+            id: msg.id,
+            sender_id: msg.sender_id,
+            receiver_id: msg.receiver_id,
+            content: decrypted_content,
+            timestamp: msg.timestamp,
+        });
+    }
+
+    order_messages_by_timestamp(&mut decrypted_list);
+    decrypted_list
 }
 
 #[derive(Debug, Serialize)]
@@ -50,11 +78,19 @@ async fn send_message_to_contact(
     user_id: String,
     contact_id: String,
     message: String,
+    contact_pub_key: String,
 ) -> Result<(), String> {
+    let encrypted_text = match encrypt_message(contact_pub_key.as_str(), message.as_str()).await {
+        Ok(cipher) => cipher,
+        Err(e) => {
+            leptos::logging::log!("ERROR: Failed to encrypt message! {:?}", e);
+            return Err("Failed to encrypt message".to_string());
+        }
+    };
     let payload = CreateMessage {
         sender_id: user_id,
         receiver_id: contact_id,
-        content: message,
+        content: encrypted_text,
     };
     let client = reqwest::Client::new();
     match client
@@ -62,51 +98,22 @@ async fn send_message_to_contact(
         .json(&payload)
         .send()
         .await
-        .ok()
     {
-        Some(response) => {
+        Ok(response) => {
             if response.status().is_success() {
                 return Ok(());
             } else {
-                return Err("Something wrong happened".to_string());
+                leptos::logging::log!(
+                    "ERROR: Message send failed with status: {}",
+                    response.status()
+                );
+                return Err(format!("Message send failed: {}", response.status()));
             }
         }
-        None => return Err("Something wrong happened".to_string()),
-    };
-}
-
-#[derive(Debug, Serialize)]
-pub struct CreateFirstMessage {
-    pub sender_id: String,
-    pub receiver_pseudo: String,
-    pub content: String,
-}
-async fn send_first_message_to_contact(
-    user_id: String,
-    pseudo: String,
-    message: String,
-) -> Result<(), String> {
-    let payload = CreateFirstMessage {
-        sender_id: user_id,
-        receiver_pseudo: pseudo,
-        content: message,
-    };
-    let client = reqwest::Client::new();
-    match client
-        .post(base_url() + "/api/messages")
-        .json(&payload)
-        .send()
-        .await
-        .ok()
-    {
-        Some(response) => {
-            if response.status().is_success() {
-                return Ok(());
-            } else {
-                return Err("Something wrong happened".to_string());
-            }
+        Err(e) => {
+            leptos::logging::log!("ERROR: Failed to send message request: {:?}", e);
+            return Err(format!("Network error: {}", e));
         }
-        None => return Err("Something wrong happened".to_string()),
     };
 }
 
@@ -162,6 +169,18 @@ pub fn Chat() -> impl IntoView {
 
     // Message writing
     let (input_text, set_input_text) = signal(String::new());
+    let (error_message, set_error_message) = signal(Option::<String>::None);
+
+    // Auto-clear error messages after 5 seconds
+    create_effect(move |_| {
+        if error_message.get().is_some() {
+            let set_error_message_clone = set_error_message.clone();
+            spawn_local(async move {
+                future::TimeoutFuture::new(5000).await;
+                set_error_message_clone.set(None);
+            });
+        }
+    });
 
     let handle_input_change = move |ev| {
         set_input_text.set(event_target_value(&ev));
@@ -322,6 +341,7 @@ pub fn Chat() -> impl IntoView {
                                                     sender_id.clone(),
                                                     contact.id.clone(),
                                                     current_text.clone(),
+                                                    contact.public_key.clone()
                                                 ).await;
                                                 set_messages.set(get_messages_with_contact(
                                                     sender_id,
@@ -362,10 +382,17 @@ pub fn Chat() -> impl IntoView {
                                             <textarea
                                                 class="textarea textarea-bordered h-24 resize-none"
                                                 placeholder="Type your first message..."
-                                                on:input=handle_input_change
+                                                on:input=move |ev| set_input_text.set(event_target_value(&ev))
                                                 prop:value=move || input_text.get()
                                             ></textarea>
                                         </div>
+
+                                        <Show when=move || error_message.get().is_some()>
+                                            <div class="alert alert-error mt-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                <span>{move || error_message.get().unwrap_or_default()}</span>
+                                            </div>
+                                        </Show>
 
                                         <button
                                             class="btn btn-primary mt-2"
@@ -373,23 +400,50 @@ pub fn Chat() -> impl IntoView {
                                             on:click=move |_| {
                                                 let sender_id = message_user_id.get_value();
                                                 let target_pseudo = new_pseudo.get();
-                                                let msg_text = input_text.get();
+                                                let message_content = input_text.get();
 
-                                                let sender_id_clone = sender_id.clone();
-                                                let my_user_id_clone = sender_id.clone();
-
-                                                set_new_pseudo.set(String::new());
-                                                set_input_text.set(String::new());
-                                                set_is_adding_contact.set(false);
+                                                #[derive(Debug, Clone, Deserialize)]
+                                                struct FirstContact {
+                                                    pub id: String,
+                                                    pub username: String,
+                                                    pub public_key: String,
+                                                }
 
                                                 spawn_local(async move {
-                                                    let _ = send_first_message_to_contact(
-                                                        sender_id_clone,
-                                                        target_pseudo,
-                                                        msg_text
-                                                    ).await;
+                                                    let res = reqwest::Client::new()
+                                                        .get(format!("{}/api/users/pseudo/{}", base_url(), target_pseudo))
+                                                        .send().await;
 
-                                                    set_contacts.set(get_contacts(my_user_id_clone).await);
+                                                    match res {
+                                                        Ok(response) => {
+                                                            if response.status().is_success() {
+                                                                match response.json::<FirstContact>().await {
+                                                                    Ok(contact) => {
+                                                                        if let Err(e) = send_message_to_contact(
+                                                                            sender_id,
+                                                                            contact.id,
+                                                                            message_content,
+                                                                            contact.public_key
+                                                                        ).await {
+                                                                            set_error_message.set(Some(format!("Failed to send message: {}", e)));
+                                                                        }
+
+                                                                        // Clear the input fields on success
+                                                                        set_new_pseudo.set(String::new());
+                                                                        set_input_text.set(String::new());
+                                                                    }
+                                                                    Err(e) => {
+                                                                        set_error_message.set(Some(format!("Failed to parse user data: {}", e)));
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                set_error_message.set(Some(format!("User '{}' not found.", target_pseudo)));
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            set_error_message.set(Some(format!("Network error: {}", e)));
+                                                        }
+                                                    }
                                                 });
                                             }
                                         >

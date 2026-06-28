@@ -1,0 +1,4 @@
+ALTER TABLE vaultchat.users
+ADD COLUMN wrapped_private_key TEXT NOT NULL DEFAULT '',
+ADD COLUMN crypto_salt TEXT NOT NULL DEFAULT '',
+ADD COLUMN aes_iv TEXT NOT NULL DEFAULT '';

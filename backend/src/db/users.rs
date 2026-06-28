@@ -1,16 +1,11 @@
 // src/db/users.rs
 // Database operations for users
 
-use rand::rngs::OsRng;
-use rsa::{
-    RsaPrivateKey,
-    pkcs8::{EncodePrivateKey, EncodePublicKey},
-};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::models::user::{CreateUser, CreateUserResponse, UpdateUserIntern, User};
+use crate::models::user::{CreateUser, CreateUserResponse, SafeUser, UpdateUserIntern, User};
 
 #[derive(Clone)]
 pub struct UserRepository {
@@ -25,7 +20,7 @@ impl UserRepository {
     pub async fn get_all_users(&self) -> AppResult<Vec<User>> {
         let users = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, pseudo, password, public_key
+            SELECT id, pseudo, password, public_key, wrapped_private_key, crypto_salt, aes_iv
             FROM vaultchat.users
             ORDER BY pseudo ASC
             "#,
@@ -39,7 +34,7 @@ impl UserRepository {
     pub async fn get_user_by_id(&self, id: Uuid) -> AppResult<User> {
         sqlx::query_as::<_, User>(
             r#"
-            SELECT id, pseudo, password, public_key
+            SELECT id, pseudo, password, public_key, wrapped_private_key, crypto_salt, aes_iv
             FROM vaultchat.users
             WHERE id = $1
             "#,
@@ -55,43 +50,24 @@ impl UserRepository {
         input: CreateUser,
         hash: &str,
     ) -> AppResult<CreateUserResponse> {
-        // Generate a 2048-bit RSA key pair
-        let mut rng = OsRng;
-        let priv_key = RsaPrivateKey::new(&mut rng, 2048).map_err(|e| {
-            AppError::Internal(anyhow::anyhow!("Failed to generate RSA key: {}", e))
-        })?;
-        let pub_key = priv_key.to_public_key();
-
-        // Encode keys to PEM strings
-        let priv_key_pem = priv_key
-            .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
-            .map_err(|e| {
-                AppError::Internal(anyhow::anyhow!("Failed to encode private key: {}", e))
-            })?
-            .to_string();
-        let pub_key_pem = pub_key
-            .to_public_key_pem(rsa::pkcs8::LineEnding::LF)
-            .map_err(|e| {
-                AppError::Internal(anyhow::anyhow!("Failed to encode public key: {}", e))
-            })?;
-
-        let user = sqlx::query_as::<_, User>(
+        let user = sqlx::query_as::<_, SafeUser>(
             r#"
-            INSERT INTO vaultchat.users (pseudo, password, public_key)
-            VALUES ($1, $2, $3)
-            RETURNING id, pseudo, password, public_key
+            INSERT INTO vaultchat.users
+            (pseudo, password, public_key, wrapped_private_key, crypto_salt, aes_iv)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, pseudo, public_key
             "#,
         )
         .bind(input.username)
         .bind(hash)
-        .bind(&pub_key_pem)
+        .bind(input.public_key)
+        .bind(input.wrapped_private_key)
+        .bind(input.crypto_salt)
+        .bind(input.aes_iv)
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(CreateUserResponse {
-            user: user.to_safe(),
-            private_key: priv_key_pem,
-        })
+        Ok(CreateUserResponse { user: user })
     }
 
     pub async fn update_user(&self, input: UpdateUserIntern) -> AppResult<User> {
@@ -127,7 +103,7 @@ impl UserRepository {
     pub async fn get_user_by_username(&self, username: String) -> AppResult<User> {
         let users = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, pseudo, password, public_key
+            SELECT id, pseudo, password, public_key, wrapped_private_key, crypto_salt, aes_iv
             FROM vaultchat.users
             WHERE pseudo = $1
             ORDER BY pseudo ASC
