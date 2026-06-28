@@ -1,10 +1,14 @@
 use leptos::{logging::log, prelude::*};
-use serde::Serialize;
+use rand::SeedableRng;
+use rsa::{
+    RsaPrivateKey,
+    pkcs8::{EncodePrivateKey, EncodePublicKey},
+};
+use serde::{Deserialize, Serialize};
+use unicode_normalization::UnicodeNormalization;
 use zxcvbn::{Score, zxcvbn};
 
-use unicode_normalization::UnicodeNormalization;
-
-use crate::services::web::base_url;
+use crate::{data_models::user::User, services::web::base_url};
 
 const ILLEGAL_TEXTS: &[&str] = &["vaultchat"];
 
@@ -91,38 +95,6 @@ fn check_password_strength(pseudo: &str, password: &str) -> Vec<String> {
     return errors;
 }
 
-#[derive(Serialize)]
-struct RegisterPayload {
-    username: String,
-    password: String,
-}
-
-pub async fn register(pseudo: &str, password: &str) -> Result<bool, String> {
-    log!("preping payload");
-    let payload = RegisterPayload {
-        username: pseudo.to_string(),
-        password: password.to_string(),
-    };
-
-    log!("sending request");
-    let client = reqwest::Client::new();
-    match client
-        .post(base_url() + "/api/users")
-        .json(&payload)
-        .send()
-        .await
-    {
-        Ok(response) => {
-            if response.status().is_success() {
-                Ok(true)
-            } else {
-                Ok(false)
-            }
-        }
-        Err(err) => Err(format!("An error happened: {:?}", err).to_string()),
-    }
-}
-
 pub fn check_credentials(
     pseudo: &str,
     password: &str,
@@ -159,4 +131,21 @@ pub fn update_errors(
             set_confirm_password_errors.set(errors.are_passwords_different());
         }
     }
+}
+
+pub fn generate_keys_client_side() -> (String, String) {
+    let mut rng = rand::rngs::StdRng::from_entropy();
+
+    let priv_key = RsaPrivateKey::new(&mut rng, 2048).expect("Failed to gen RSA");
+    let pub_key = priv_key.to_public_key();
+
+    let priv_key_pem = priv_key
+        .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
+        .unwrap()
+        .to_string();
+    let pub_key_pem = pub_key
+        .to_public_key_pem(rsa::pkcs8::LineEnding::LF)
+        .unwrap();
+
+    (priv_key_pem, pub_key_pem)
 }

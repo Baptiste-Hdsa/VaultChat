@@ -1,15 +1,33 @@
-use std::time::Duration;
-
+use gloo_timers::future;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use leptos_router::{components::A, hooks::use_navigate};
 use leptos_use::signal_debounced;
 
-use crate::pages::register::helpers::*;
+use crate::{
+    pages::register::helpers::*,
+    services::{
+        keys::{
+            bytes_to_base64, derive_kek, export_public_key, generate_rsa_keypair, wrap_private_key,
+        },
+        web::base_url,
+    },
+};
+
+#[derive(serde::Serialize)]
+struct RegisterPayload {
+    username: String,
+    password: String, // Kept to hash on backend for standard auth
+    public_key: String,
+    wrapped_private_key: String,
+    crypto_salt: String,
+    aes_iv: String,
+}
 
 #[component]
 pub fn Register() -> impl IntoView {
     let navigate = use_navigate();
+    let (should_redirect, set_should_redirect) = signal(false);
 
     // Variables
     let (pseudo, set_pseudo) = signal(String::new());
@@ -37,39 +55,86 @@ pub fn Register() -> impl IntoView {
         has_ui_errors || is_empty
     };
 
+    // Handle redirect when registration is successful
+    Effect::new(move |_| {
+        if should_redirect.get() {
+            let navigate_clone = navigate.clone();
+            spawn_local(async move {
+                future::TimeoutFuture::new(2000).await;
+                navigate_clone("/login", Default::default());
+            });
+        }
+    });
+
     // Helpers "functions"
     let register = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-
         set_server_error.set(None);
 
-        let navigate_clone = navigate.clone();
+        let pseudo_val = pseudo.get();
+        let password_val = password.get();
 
         spawn_local(async move {
-            let user_result =
-                register(debounced_pseudo.get().as_str(), password.get().as_str()).await;
-            match user_result {
-                Ok(is_ok) => {
-                    if is_ok {
+            // A. Generate random parameters
+            let mut salt = [0u8; 16];
+            let mut iv = [0u8; 12];
+            let crypto = web_sys::window().unwrap().crypto().unwrap();
+            crypto.get_random_values_with_u8_array(&mut salt).unwrap();
+            crypto.get_random_values_with_u8_array(&mut iv).unwrap();
+
+            // B. Run the heavy cryptography!
+            // (Make sure to import these functions from your keys.rs module)
+            let (pub_key, priv_key) = generate_rsa_keypair().await.unwrap();
+            let kek = derive_kek(&password_val, &salt).await.unwrap();
+
+            let wrapped_priv_key_bytes = wrap_private_key(&priv_key, &kek, &iv).await.unwrap();
+            let pub_key_b64 = export_public_key(&pub_key).await.unwrap();
+
+            // C. Convert raw bytes to Base64 to send as strings in JSON
+            let salt_b64 = bytes_to_base64(&salt);
+            let iv_b64 = bytes_to_base64(&iv);
+            let wrapped_priv_b64 = bytes_to_base64(&wrapped_priv_key_bytes);
+
+            // D. Send the payload
+            let payload = RegisterPayload {
+                username: pseudo_val,
+                password: password_val,
+                public_key: pub_key_b64,
+                wrapped_private_key: wrapped_priv_b64,
+                crypto_salt: salt_b64,
+                aes_iv: iv_b64,
+            };
+
+            let client = reqwest::Client::new();
+            match client
+                .post(base_url() + "/api/users")
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        // Registration successful
                         set_register_success.set(true);
-                        set_timeout(
-                            move || {
-                                navigate_clone("/login", Default::default());
-                            },
-                            Duration::from_secs(2),
-                        );
+
+                        // Redirect to login after a short delay to show success message
+                        set_should_redirect.set(true);
                     } else {
-                        set_server_error.set(Some(
-                            "Registration failed, try again in a few minutes.".to_string(),
-                        ));
+                        // Registration failed
+                        let error_msg = match response.text().await {
+                            Ok(text) => format!("Registration failed: {}", text),
+                            Err(_) => "Registration failed".to_string(),
+                        };
+                        set_server_error.set(Some(error_msg));
                     }
                 }
                 Err(err) => {
-                    set_server_error.set(Some(
-                        format!("An unexpected error happended: {}", err).to_string(),
-                    ));
+                    // Network error
+                    set_server_error.set(Some(format!("Network error: {:?}", err)));
                 }
-            }
+            };
+
+            drop(priv_key);
         });
     };
 

@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
-    models::user::SafeUser,
+    models::user::{CreateUserResponse, LoginUserInput, LoginUserOutput, SafeUser},
 };
 use crate::{
     helpers::password::hash_password,
@@ -49,11 +49,19 @@ pub async fn get_user_by_id(
     Ok(Json(user.to_safe()))
 }
 
+pub async fn get_user_by_username(
+    State(state): State<VaultChatState>,
+    Path(username): Path<String>,
+) -> AppResult<Json<SafeUser>> {
+    let user = state.user_repo.get_user_by_username(username).await?;
+    Ok(Json(user.to_safe()))
+}
+
 // POST /users - Create a new user
 pub async fn create_user(
     State(state): State<VaultChatState>,
     Json(input): Json<CreateUser>,
-) -> AppResult<(StatusCode, Json<crate::models::user::CreateUserResponse>)> {
+) -> AppResult<(StatusCode, Json<CreateUserResponse>)> {
     if input.username.trim().is_empty() {
         return Err(AppError::Validation("username cannot be empty".to_string()));
     }
@@ -109,8 +117,8 @@ pub async fn delete_user(
 pub async fn login_user(
     State(state): State<VaultChatState>,
     jar: CookieJar,
-    Json(input): Json<CreateUser>,
-) -> AppResult<(CookieJar, Json<SafeUser>)> {
+    Json(input): Json<LoginUserInput>,
+) -> AppResult<(CookieJar, Json<LoginUserOutput>)> {
     let user = state.user_repo.get_user_by_username(input.username).await?;
 
     if !verify_password(&user.password, &input.password) {
@@ -128,7 +136,7 @@ pub async fn login_user(
         .same_site(SameSite::Strict)
         .build();
 
-    Ok((jar.add(cookie), Json(user.to_safe())))
+    Ok((jar.add(cookie), Json(user.to_login())))
 }
 
 pub async fn get_current_user(
