@@ -1,14 +1,6 @@
 use leptos::{logging::log, prelude::*};
-use rand::SeedableRng;
-use rsa::{
-    RsaPrivateKey,
-    pkcs8::{EncodePrivateKey, EncodePublicKey},
-};
-use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 use zxcvbn::{Score, zxcvbn};
-
-use crate::{data_models::user::User, services::web::base_url};
 
 const ILLEGAL_TEXTS: &[&str] = &["vaultchat"];
 
@@ -131,21 +123,4 @@ pub fn update_errors(
             set_confirm_password_errors.set(errors.are_passwords_different());
         }
     }
-}
-
-pub fn generate_keys_client_side() -> (String, String) {
-    let mut rng = rand::rngs::StdRng::from_entropy();
-
-    let priv_key = RsaPrivateKey::new(&mut rng, 2048).expect("Failed to gen RSA");
-    let pub_key = priv_key.to_public_key();
-
-    let priv_key_pem = priv_key
-        .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
-        .unwrap()
-        .to_string();
-    let pub_key_pem = pub_key
-        .to_public_key_pem(rsa::pkcs8::LineEnding::LF)
-        .unwrap();
-
-    (priv_key_pem, pub_key_pem)
 }

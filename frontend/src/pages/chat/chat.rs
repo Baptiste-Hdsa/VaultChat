@@ -172,7 +172,7 @@ pub fn Chat() -> impl IntoView {
     let (error_message, set_error_message) = signal(Option::<String>::None);
 
     // Auto-clear error messages after 5 seconds
-    create_effect(move |_| {
+    Effect::new(move |_| {
         if error_message.get().is_some() {
             let set_error_message_clone = set_error_message.clone();
             spawn_local(async move {
