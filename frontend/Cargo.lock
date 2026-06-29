@@ -727,6 +727,7 @@ dependencies = [
  "reqwest",
  "rsa",
  "serde",
+ "serde_json",
  "unicode-normalization",
  "wasm-bindgen",
  "wasm-bindgen-futures",

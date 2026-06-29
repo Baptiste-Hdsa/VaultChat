@@ -4,6 +4,7 @@
 
 use axum::Router;
 use std::net::SocketAddr;
+use tokio::sync::broadcast;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod db;
@@ -13,6 +14,7 @@ mod helpers;
 mod models;
 mod routes;
 mod security;
+mod websocket;
 
 pub mod state;
 
@@ -21,6 +23,7 @@ use db::pool::create_pool;
 use db::users::UserRepository;
 use routes::users::user_routes;
 use routes::vault_chat::vault_chat_routes;
+use routes::ws::ws_routes;
 use state::VaultChatState;
 
 #[tokio::main]
@@ -50,16 +53,19 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     tracing::info!("Migrations complete");
 
+    let (tx, _rx) = broadcast::channel(100); // Web sockets
     // Create application state
     let state = VaultChatState {
         message_repo: MessageRepository::new(pool.clone()),
         user_repo: UserRepository::new(pool),
+        tx,
     };
 
     // Build the router
     let app = Router::new()
         .merge(vault_chat_routes())
         .merge(user_routes())
+        .merge(ws_routes())
         .with_state(state);
 
     // Start the server

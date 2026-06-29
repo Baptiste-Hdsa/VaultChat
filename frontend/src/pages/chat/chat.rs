@@ -1,9 +1,13 @@
 use chrono::Local;
 use gloo_timers::future;
+use leptos::wasm_bindgen::JsCast;
+use leptos::wasm_bindgen::closure::Closure;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_icons::Icon;
 use serde::{Deserialize, Serialize};
+use web_sys::{MessageEvent, WebSocket};
 
+use crate::services::web::base_hostname;
 use crate::{
     data_models::{contact::Contact, message::Message},
     services::{
@@ -185,6 +189,33 @@ pub fn Chat() -> impl IntoView {
     let handle_input_change = move |ev| {
         set_input_text.set(event_target_value(&ev));
     };
+
+    // Web socket for messages
+    let ws_active_contact = active_contact.clone();
+    let ws_user_id = my_user_id.clone();
+    let ws_set_messages = set_messages.clone();
+
+    Effect::new(move |_| {
+        let ws_user_id_clone = ws_user_id.clone();
+        let ws = WebSocket::new(format!("ws://{}/ws", base_hostname()).as_str()).unwrap();
+
+        let onmessage_callback = Closure::wrap(Box::new(move |_e: MessageEvent| {
+            if let Some(contact) = ws_active_contact() {
+                let fetch_user_id = ws_user_id_clone.clone();
+                let fetch_contact_id = contact.id.clone();
+
+                spawn_local(async move {
+                    let fresh_messages =
+                        get_messages_with_contact(fetch_user_id, fetch_contact_id).await;
+                    ws_set_messages.set(fresh_messages);
+                });
+            }
+        }) as Box<dyn FnMut(MessageEvent)>);
+
+        ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+
+        onmessage_callback.forget();
+    });
 
     view! {
         <div class="flex h-full w-full">

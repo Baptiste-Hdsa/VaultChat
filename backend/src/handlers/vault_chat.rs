@@ -65,6 +65,7 @@ pub async fn create_chat_message(
         ));
     };
 
+    let _ = state.tx.send("NEW_MESSAGE".to_string());
     Ok((StatusCode::CREATED, Json(message)))
 }
 

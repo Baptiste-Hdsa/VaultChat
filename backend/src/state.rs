@@ -1,3 +1,5 @@
+use tokio::sync::broadcast;
+
 // src/state.rs
 use crate::db::messages::MessageRepository;
 use crate::db::users::UserRepository;
@@ -8,4 +10,5 @@ use crate::db::users::UserRepository;
 pub struct VaultChatState {
     pub message_repo: MessageRepository,
     pub user_repo: UserRepository,
+    pub tx: broadcast::Sender<String>, // Web sockets
 }
