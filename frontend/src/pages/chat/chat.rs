@@ -1,6 +1,7 @@
 use chrono::Local;
 use chrono::{DateTime, Utc};
 use gloo_timers::future;
+use leptos::ev;
 use leptos::wasm_bindgen::JsCast;
 use leptos::wasm_bindgen::closure::Closure;
 use leptos::{prelude::*, task::spawn_local};
@@ -259,10 +260,6 @@ pub fn Chat() -> impl IntoView {
         }
     });
 
-    let handle_input_change = move |ev| {
-        set_input_text.set(event_target_value(&ev));
-    };
-
     // Web socket for messages
     let ws_active_contact = active_contact.clone();
     let ws_user_id = my_user_id.clone();
@@ -294,6 +291,23 @@ pub fn Chat() -> impl IntoView {
         onmessage_callback.forget();
     });
 
+    let focus_active_contact = active_contact.clone();
+    let focus_user_id = my_user_id.clone();
+    let focus_set_messages = set_messages.clone();
+
+    window_event_listener(ev::focus, move |_| {
+        if let Some(contact) = focus_active_contact() {
+            let fetch_user_id = focus_user_id.clone();
+            let fetch_contact_id = contact.id.clone();
+
+            spawn_local(async move {
+                let fresh_messages =
+                    get_messages_with_contact(fetch_user_id, fetch_contact_id).await;
+                focus_set_messages.set(fresh_messages);
+            });
+        }
+    });
+
     //Auto scroll messages :
     let bottom_ref = NodeRef::<leptos::html::Div>::new();
 
@@ -308,6 +322,43 @@ pub fn Chat() -> impl IntoView {
             }
         });
     });
+
+    // Send text on enter
+    let handle_input_change = move |ev| {
+        set_input_text.set(event_target_value(&ev));
+    };
+
+    // 1. ADD THIS BLOCK: The Enter Key Listener
+    let handle_keydown = move |ev: leptos::ev::KeyboardEvent| {
+        // If Enter is pressed AND Shift is NOT pressed
+        if ev.key() == "Enter" && !ev.shift_key() {
+            ev.prevent_default(); // Stop the textarea from creating a new line
+
+            if input_text.get().trim().is_empty() {
+                return;
+            } // Don't send empty messages
+
+            if let Some(contact) = active_contact() {
+                let sender_id = message_user_id.get_value();
+                let sender_public_key = my_pub_key.get_value();
+                let current_text = input_text.get();
+
+                spawn_local(async move {
+                    let _ = send_message_to_contact(
+                        sender_id.clone(),
+                        contact.id.clone(),
+                        current_text.clone(),
+                        contact.public_key.clone(),
+                        sender_public_key,
+                    )
+                    .await;
+                    set_messages.set(get_messages_with_contact(sender_id, contact.id).await);
+                });
+
+                set_input_text.set(String::new());
+            }
+        }
+    };
 
     view! {
         <div class="flex h-full w-full">
@@ -464,6 +515,7 @@ pub fn Chat() -> impl IntoView {
                                 rows="1"
                                 placeholder="Type a message..."
                                 on:input=handle_input_change
+                                on:keydown=handle_keydown
                                 prop:value=move || input_text.get()
                             ></textarea>
 
