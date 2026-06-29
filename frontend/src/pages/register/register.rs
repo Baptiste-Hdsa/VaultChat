@@ -183,7 +183,7 @@ pub fn Register() -> impl IntoView {
 
     // View
     view! {
-        <div class="min-h-screen flex items-center justify-center bg-base-200">
+        <div class="min-h-full flex items-center justify-center bg-base-200 p-4">
 
             <form
                 class="flex flex-col gap-4 w-full max-w-sm p-8 bg-base-100 rounded-xl shadow-lg"

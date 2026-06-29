@@ -19,7 +19,7 @@ pub fn App() -> impl IntoView {
             <div class="h-[100dvh] w-full flex flex-col overflow-hidden bg-base-200">
                 <Navbar />
 
-                <main class="flex-1 min-h-0 overflow-hidden relative">
+                <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative">
                     <Suspense fallback=|| view! {
                         <div class="loading">"Verifying session..."</div> }>
                             {move || {

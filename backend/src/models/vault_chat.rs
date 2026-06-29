@@ -11,7 +11,8 @@ pub struct Message {
     pub id: Uuid,
     pub sender_id: Uuid,
     pub receiver_id: Uuid,
-    pub content: Option<String>,
+    pub sender_content: Option<String>,
+    pub receiver_content: Option<String>,
     pub sent_at: DateTime<Utc>,
 }
 
@@ -20,7 +21,8 @@ pub struct CreateMessage {
     pub sender_id: Uuid,
     pub receiver_id: Option<Uuid>,
     pub receiver_pseudo: Option<String>,
-    pub content: Option<String>,
+    pub sender_content: Option<String>,
+    pub receiver_content: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -7,6 +7,5 @@ pub struct Message {
     pub sender_id: String,
     pub receiver_id: String,
     pub content: String,
-    #[serde(rename = "sent_at")]
     pub timestamp: DateTime<Utc>,
 }

@@ -1,4 +1,5 @@
 use chrono::Local;
+use chrono::{DateTime, Utc};
 use gloo_timers::future;
 use leptos::wasm_bindgen::JsCast;
 use leptos::wasm_bindgen::closure::Closure;
@@ -21,6 +22,17 @@ fn order_messages_by_timestamp(messages: &mut Vec<Message>) {
     messages.sort_by_key(|message| message.timestamp);
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct InputMessage {
+    pub id: String,
+    pub sender_id: String,
+    pub receiver_id: String,
+    pub sender_content: String,
+    pub receiver_content: String,
+    #[serde(rename = "sent_at")]
+    pub timestamp: DateTime<Utc>,
+}
+
 async fn get_messages_with_contact(user_id: String, contact_id: String) -> Vec<Message> {
     let client = reqwest::Client::new();
     let messages = match client
@@ -33,7 +45,7 @@ async fn get_messages_with_contact(user_id: String, contact_id: String) -> Vec<M
     {
         Some(response) => {
             if response.status().is_success() {
-                match response.json::<Vec<Message>>().await.ok() {
+                match response.json::<Vec<InputMessage>>().await.ok() {
                     Some(messages) => messages,
                     None => vec![],
                 }
@@ -50,11 +62,11 @@ async fn get_messages_with_contact(user_id: String, contact_id: String) -> Vec<M
     let mut decrypted_list = Vec::new();
     for msg in messages {
         let decrypted_content = if msg.sender_id == user_id {
-            // It's YOUR message. (If you didn't double-encrypt, you can't decrypt it)
-            msg.content
+            decrypt_message(&my_priv_key, &msg.sender_content)
+                .await
+                .unwrap_or_else(|_| "Error decrypting".to_string())
         } else {
-            // It's RECEIVED. Decrypt it!
-            decrypt_message(&my_priv_key, &msg.content)
+            decrypt_message(&my_priv_key, &msg.receiver_content)
                 .await
                 .unwrap_or_else(|_| "Error decrypting".to_string())
         };
@@ -76,15 +88,25 @@ async fn get_messages_with_contact(user_id: String, contact_id: String) -> Vec<M
 pub struct CreateMessage {
     pub sender_id: String,
     pub receiver_id: String,
-    pub content: String,
+    pub sender_content: String,
+    pub receiver_content: String,
 }
 async fn send_message_to_contact(
     user_id: String,
     contact_id: String,
     message: String,
     contact_pub_key: String,
+    self_pub_key: String,
 ) -> Result<(), String> {
     let encrypted_text = match encrypt_message(contact_pub_key.as_str(), message.as_str()).await {
+        Ok(cipher) => cipher,
+        Err(e) => {
+            leptos::logging::log!("ERROR: Failed to encrypt message! {:?}", e);
+            return Err("Failed to encrypt message".to_string());
+        }
+    };
+
+    let self_encrypted_text = match encrypt_message(self_pub_key.as_str(), message.as_str()).await {
         Ok(cipher) => cipher,
         Err(e) => {
             leptos::logging::log!("ERROR: Failed to encrypt message! {:?}", e);
@@ -94,7 +116,8 @@ async fn send_message_to_contact(
     let payload = CreateMessage {
         sender_id: user_id,
         receiver_id: contact_id,
-        content: encrypted_text,
+        receiver_content: encrypted_text,
+        sender_content: self_encrypted_text,
     };
     let client = reqwest::Client::new();
     match client
@@ -121,9 +144,17 @@ async fn send_message_to_contact(
     };
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct InputContact {
+    pub id: String,
+    pub username: String,
+    pub public_key: String,
+    pub last_message: Option<InputMessage>,
+}
+
 async fn get_contacts(user_id: String) -> Vec<Contact> {
     let client = reqwest::Client::new();
-    let contacts = match client
+    let input_contacts = match client
         .get(base_url() + "/api/contacts/" + user_id.as_str())
         .send()
         .await
@@ -131,9 +162,13 @@ async fn get_contacts(user_id: String) -> Vec<Contact> {
     {
         Some(response) => {
             if response.status().is_success() {
-                match response.json::<Vec<Contact>>().await.ok() {
+                // Parse using InputContact instead of Contact
+                match response.json::<Vec<InputContact>>().await.ok() {
                     Some(contacts) => contacts,
-                    None => vec![],
+                    None => {
+                        leptos::logging::log!("ERROR: Failed to parse contacts JSON");
+                        vec![]
+                    }
                 }
             } else {
                 vec![]
@@ -141,14 +176,52 @@ async fn get_contacts(user_id: String) -> Vec<Contact> {
         }
         None => vec![],
     };
-    contacts
+
+    let my_priv_key = get_key_securely().await.unwrap();
+    let mut final_contacts = Vec::new();
+
+    // Loop through and decrypt the last message for the sidebar preview
+    for ic in input_contacts {
+        let last_message = if let Some(msg) = ic.last_message {
+            let decrypted_content = if msg.sender_id == user_id {
+                decrypt_message(&my_priv_key, &msg.sender_content)
+                    .await
+                    .unwrap_or_else(|_| "Error decrypting".to_string())
+            } else {
+                decrypt_message(&my_priv_key, &msg.receiver_content)
+                    .await
+                    .unwrap_or_else(|_| "Error decrypting".to_string())
+            };
+
+            Some(Message {
+                id: msg.id,
+                sender_id: msg.sender_id,
+                receiver_id: msg.receiver_id,
+                content: decrypted_content,
+                timestamp: msg.timestamp,
+            })
+        } else {
+            None
+        };
+
+        final_contacts.push(Contact {
+            id: ic.id,
+            username: ic.username,
+            public_key: ic.public_key,
+            last_message,
+        });
+    }
+
+    final_contacts
 }
 
 #[component]
 pub fn Chat() -> impl IntoView {
     // Contacts
-    let my_user_id = get_current_user().get().expect("No user logged in").id;
+    let my_user = get_current_user().get().expect("No user logged in");
+    let my_user_id = my_user.id.clone();
     let message_user_id = StoredValue::new(my_user_id.clone());
+    let my_pub_key = StoredValue::new(my_user.public_key.clone());
     let (messages, set_messages): (ReadSignal<Vec<Message>>, WriteSignal<Vec<Message>>) =
         signal(Vec::new());
     let (contacts, set_contacts): (ReadSignal<Vec<Contact>>, WriteSignal<Vec<Contact>>) =
@@ -197,7 +270,11 @@ pub fn Chat() -> impl IntoView {
 
     Effect::new(move |_| {
         let ws_user_id_clone = ws_user_id.clone();
-        let ws = WebSocket::new(format!("wss://{}/ws", base_hostname()).as_str()).unwrap();
+        let window = web_sys::window().unwrap();
+        let protocol = window.location().protocol().unwrap();
+        let ws_protocol = if protocol == "https:" { "wss:" } else { "ws:" };
+        let ws_url = format!("{}//{}/ws", ws_protocol, base_hostname());
+        let ws = WebSocket::new(&ws_url).unwrap();
 
         let onmessage_callback = Closure::wrap(Box::new(move |_e: MessageEvent| {
             if let Some(contact) = ws_active_contact() {
@@ -217,11 +294,30 @@ pub fn Chat() -> impl IntoView {
         onmessage_callback.forget();
     });
 
+    //Auto scroll messages :
+    let bottom_ref = NodeRef::<leptos::html::Div>::new();
+
+    Effect::new(move |_| {
+        // Read the signal without cloning the whole array just to track it
+        messages.with(|_| ());
+
+        // request_animation_frame waits for the DOM to finish updating!
+        request_animation_frame(move || {
+            if let Some(el) = bottom_ref.get() {
+                el.scroll_into_view();
+            }
+        });
+    });
+
     view! {
         <div class="flex h-full w-full">
 
             // Contacts list
-            <aside class="w-72 min-w-[18rem] max-w-[22rem] flex flex-col bg-base-100 border-r border-base-300 shadow-lg">
+            <aside
+                class="flex-col bg-base-100 border-r border-base-300 shadow-lg w-full md:w-72 md:min-w-[18rem] md:max-w-[22rem] md:flex"
+                class:flex=move || selected_contact.get().is_none() && !is_adding_contact.get()
+                class:hidden=move || selected_contact.get().is_some() || is_adding_contact.get()
+            >
                 <div class="p-4 border-b border-base-300 flex justify-between items-center">
                     <h1 class="text-xl font-bold tracking-tight">"Discussions"</h1>
                     <button class="btn btn-circle btn-ghost btn-sm"
@@ -273,8 +369,12 @@ pub fn Chat() -> impl IntoView {
             </aside>
 
             // Selected contact messaging zone
-            <main class="flex-1 flex flex-col bg-base-100 relative">
-            <Show
+            <main
+                class="flex-1 flex-col bg-base-100 relative w-full md:flex"
+                class:flex=move || selected_contact.get().is_some() || is_adding_contact.get()
+                class:hidden=move || selected_contact.get().is_none() && !is_adding_contact.get()
+            >
+                <Show
                     when=move || is_adding_contact.get()
                     fallback=move || view! {
                         <Show
@@ -297,7 +397,18 @@ pub fn Chat() -> impl IntoView {
                 >
                     // Contact info
                     <header class="border-b border-base-300 p-4 bg-base-100 flex justify-between items-center shadow-sm z-10 shrink-0">
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2">
+                            // MOBILE BACK BUTTON
+                            <button
+                                class="btn btn-ghost btn-circle btn-sm md:hidden"
+                                on:click=move |_| {
+                                    set_selected_contact.set(None);
+                                    set_is_adding_contact.set(false);
+                                }
+                            >
+                                <Icon icon=icondata::BiArrowBackRegular attr:class="size-5".to_string() />
+                            </button>
+
                             <div>
                                 <h2 class="font-bold text-base">
                                     {move || active_contact().map(|c| c.username).unwrap_or_default()}
@@ -308,11 +419,6 @@ pub fn Chat() -> impl IntoView {
 
                     // Messages zone
                     <div class="flex-1 overflow-y-auto p-4 space-y-4 chat-scroll bg-base-100">
-                        // Example day separator
-                        // <div class="text-center my-4">
-                        //     <span class="badge badge-ghost badge-sm">"Today"</span>
-                        // </div>
-
                         <For
                             each=move || messages.get()
 
@@ -345,6 +451,7 @@ pub fn Chat() -> impl IntoView {
                                 }
                             }
                         />
+                        <div node_ref=bottom_ref></div>
                     </div>
 
                     // Writing zone
@@ -364,7 +471,9 @@ pub fn Chat() -> impl IntoView {
                                 class="btn btn-primary btn-square"
                                 on:click=move |_| {
                                         if let Some(contact) = active_contact() {
+                                            // Get the values from StoredValue cleanly!
                                             let sender_id = message_user_id.get_value();
+                                            let sender_public_key = my_pub_key.get_value();
                                             let current_text = input_text.get();
 
                                             spawn_local(async move {
@@ -372,7 +481,8 @@ pub fn Chat() -> impl IntoView {
                                                     sender_id.clone(),
                                                     contact.id.clone(),
                                                     current_text.clone(),
-                                                    contact.public_key.clone()
+                                                    contact.public_key.clone(),
+                                                    sender_public_key, // Passed directly
                                                 ).await;
                                                 set_messages.set(get_messages_with_contact(
                                                     sender_id,
@@ -395,6 +505,12 @@ pub fn Chat() -> impl IntoView {
                             >
                                 <div class="flex-1 flex flex-col p-8 items-center justify-center">
                                     <div class="w-full max-w-md bg-base-200 p-6 rounded-xl shadow-md flex flex-col gap-4">
+                                        <button
+                                            class="btn btn-ghost btn-circle btn-sm md:hidden"
+                                            on:click=move |_| set_is_adding_contact.set(false)
+                                        >
+                                            <Icon icon=icondata::BiArrowBackRegular attr:class="size-5".to_string() />
+                                        </button>
                                         <h2 class="text-xl font-bold">"Start a new discussion"</h2>
 
                                         <div class="form-control">
@@ -429,7 +545,9 @@ pub fn Chat() -> impl IntoView {
                                             class="btn btn-primary mt-2"
                                             prop:disabled=move || new_pseudo.get().trim().is_empty() || input_text.get().trim().is_empty()
                                             on:click=move |_| {
+
                                                 let sender_id = message_user_id.get_value();
+                                                let sender_public_key = my_pub_key.get_value();
                                                 let target_pseudo = new_pseudo.get();
                                                 let message_content = input_text.get();
 
@@ -454,7 +572,8 @@ pub fn Chat() -> impl IntoView {
                                                                             sender_id,
                                                                             contact.id,
                                                                             message_content,
-                                                                            contact.public_key
+                                                                            contact.public_key,
+                                                                            sender_public_key.clone()
                                                                         ).await {
                                                                             set_error_message.set(Some(format!("Failed to send message: {}", e)));
                                                                         }

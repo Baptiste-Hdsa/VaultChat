@@ -7,14 +7,14 @@ use leptos_router::components::A;
 #[component]
 pub fn Home() -> impl IntoView {
     view! {
-        <div class="min-h-screen bg-base-200 flex flex-col text-base-content">
+        <div class="min-h-full flex flex-col bg-base-200 text-base-content">
 
             // --- HERO SECTION ---
             <main class="flex-grow flex flex-col items-center justify-center pt-8 pb-16">
                 <div class="hero bg-base-200 py-12">
                     <div class="hero-content text-center">
                         <div class="max-w-2xl">
-                            <h1 class="text-5xl font-bold tracking-tight mb-6">
+                            <h1 class="text-4xl md:text-5xl font-bold tracking-tight mb-6">
                                 "Your Data. Your Chat."
                             </h1>
                             <p class="text-xl mb-8 opacity-80">

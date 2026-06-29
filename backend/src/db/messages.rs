@@ -26,7 +26,7 @@ impl MessageRepository {
     ) -> AppResult<Vec<Message>> {
         let chat_messages = sqlx::query_as::<_, Message>(
             r#"
-            SELECT id, sender_id, receiver_id, content, sent_at
+            SELECT id, sender_id, receiver_id, sender_content, receiver_content, sent_at
             FROM vaultchat.messages
             WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
             ORDER BY sent_at ASC
@@ -43,7 +43,7 @@ impl MessageRepository {
     pub async fn get_message_by_id(&self, id: Uuid) -> AppResult<Message> {
         sqlx::query_as::<_, Message>(
             r#"
-            SELECT id, sender_id, receiver_id, content, sent_at
+            SELECT id, sender_id, receiver_id, sender_content, receiver_content, sent_at
             FROM vaultchat.messages
             WHERE id = $1
             "#,
@@ -59,38 +59,15 @@ impl MessageRepository {
 
         let message = sqlx::query_as::<_, Message>(
             r#"
-            INSERT INTO vaultchat.messages (sender_id, receiver_id, content, sent_at)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, sender_id, receiver_id, content, sent_at
+            INSERT INTO vaultchat.messages (sender_id, receiver_id, receiver_content, sender_content, sent_at)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, sender_id, receiver_id, sender_content, receiver_content, sent_at
             "#,
         )
         .bind(&input.sender_id)
         .bind(&input.receiver_id.unwrap())
-        .bind(&input.content)
-        .bind(now)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(message)
-    }
-
-    pub async fn create_first_message(
-        &self,
-        input: CreateMessage,
-        receiver_id: Uuid,
-    ) -> AppResult<Message> {
-        let now = Utc::now();
-
-        let message = sqlx::query_as::<_, Message>(
-            r#"
-            INSERT INTO vaultchat.messages (sender_id, receiver_id, content, sent_at)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, sender_id, receiver_id, content, sent_at
-            "#,
-        )
-        .bind(&input.sender_id)
-        .bind(receiver_id)
-        .bind(&input.content)
+        .bind(&input.receiver_content)
+        .bind(&input.sender_content)
         .bind(now)
         .fetch_one(&self.pool)
         .await?;
@@ -105,7 +82,7 @@ impl MessageRepository {
             SET
                 content = COALESCE($2, content)
             WHERE id = $1
-            RETURNING id, sender_id, receiver_id, content, sent_at
+            RETURNING id, sender_id, receiver_id, sender_content, receiver_content, sent_at
             "#,
         )
         .bind(input.id)
@@ -129,7 +106,7 @@ impl MessageRepository {
     pub async fn get_user_contacts(&self, id: Uuid) -> AppResult<Vec<SafeUser>> {
         let contacts = sqlx::query_as::<_, SafeUser>(
             r#"
-                SELECT u.id, u.pseudo, u.public_key
+                SELECT DISTINCT u.id, u.pseudo, u.public_key
                 FROM vaultchat.users u
                 INNER JOIN vaultchat.messages m ON m.sender_id = u.id or m.receiver_id = u.id
                 WHERE (m.sender_id = $1 OR  m.receiver_id = $1) AND u.id != $1
@@ -145,7 +122,7 @@ impl MessageRepository {
     pub async fn get_last_message(&self, user_1: Uuid, user_2: Uuid) -> AppResult<Message> {
         let chat_messages = sqlx::query_as::<_, Message>(
             r#"
-            SELECT id, sender_id, receiver_id, content, sent_at
+            SELECT id, sender_id, receiver_id, sender_content, receiver_content, sent_at
             FROM vaultchat.messages
             WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
             ORDER BY sent_at DESC

@@ -42,7 +42,7 @@ pub async fn create_chat_message(
     State(state): State<VaultChatState>,
     Json(input): Json<CreateMessage>,
 ) -> AppResult<(StatusCode, Json<Message>)> {
-    if let Some(content) = &input.content {
+    if let Some(content) = &input.receiver_content {
         if content.trim().is_empty() {
             return Err(AppError::Validation("Message cannot be empty".to_string()));
         }
@@ -50,15 +50,6 @@ pub async fn create_chat_message(
 
     let message = if input.receiver_id.is_some() {
         state.message_repo.create_message(input).await?
-    } else if input.receiver_pseudo.is_some() {
-        let receiver = state
-            .user_repo
-            .get_user_by_username(input.receiver_pseudo.clone().unwrap())
-            .await?;
-        state
-            .message_repo
-            .create_first_message(input, receiver.id)
-            .await?
     } else {
         return Err(AppError::Validation(
             "Message cannot be send to no one".to_string(),

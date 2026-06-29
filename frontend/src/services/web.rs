@@ -3,5 +3,5 @@ pub fn base_url() -> String {
 }
 
 pub fn base_hostname() -> String {
-    web_sys::window().unwrap().location().hostname().unwrap()
+    web_sys::window().unwrap().location().host().unwrap()
 }
