@@ -197,7 +197,7 @@ pub fn Chat() -> impl IntoView {
 
     Effect::new(move |_| {
         let ws_user_id_clone = ws_user_id.clone();
-        let ws = WebSocket::new(format!("ws://{}/ws", base_hostname()).as_str()).unwrap();
+        let ws = WebSocket::new(format!("wss://{}/ws", base_hostname()).as_str()).unwrap();
 
         let onmessage_callback = Closure::wrap(Box::new(move |_e: MessageEvent| {
             if let Some(contact) = ws_active_contact() {
